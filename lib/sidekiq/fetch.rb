@@ -99,7 +99,7 @@ module Sidekiq
     end
 
     def retrieve_work
-      work = Sidekiq::Queue.retrieve_work(queues_cmd)
+      work = Sidekiq::Queue.strategy.retrieve_work(queues_cmd)
       UnitOfWork.new(*work) if work
     end
 
@@ -118,7 +118,7 @@ module Sidekiq
       Sidekiq.redis do |conn|
         conn.pipelined do
           jobs_to_requeue.each do |queue, jobs|
-            Sidekiq::Queue.new(queue).requeue(jobs)
+            Sidekiq::Queue.strategy.new(queue).requeue(jobs)
           end
         end
       end
@@ -137,7 +137,7 @@ module Sidekiq
       end
 
       def requeue
-        Sidekiq::Queue.new(queue_name).requeue(message)
+        Sidekiq::Queue.strategy.new(queue_name).requeue(message)
       end
     end
 

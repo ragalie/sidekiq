@@ -179,7 +179,7 @@ module Sidekiq
     def raw_push(payloads)
       @redis_pool.with do |conn|
         conn.multi do
-          queue = Sidekiq::Queue.new(payloads.first['queue'], conn)
+          queue = Sidekiq::Queue.strategy.new(payloads.first['queue'], conn)
           queue.push(payloads)
         end
       end

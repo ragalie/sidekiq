@@ -59,7 +59,7 @@ module Sidekiq
     end
 
     get "/queues" do
-      @queues = Sidekiq::Queue.all
+      @queues = Sidekiq::Queue.strategy.all
       erb :queues
     end
 
@@ -67,14 +67,14 @@ module Sidekiq
       halt 404 unless params[:name]
       @count = (params[:count] || 25).to_i
       @name = params[:name]
-      @queue = Sidekiq::Queue.new(@name)
+      @queue = Sidekiq::Queue.strategy.new(@name)
       (@current_page, @total_size, @messages) = page("queue:#{@name}", params[:page], @count)
       @messages = @messages.map {|msg| Sidekiq::Job.new(msg, @name) }
       erb :queue
     end
 
     post "/queues/:name" do
-      Sidekiq::Queue.new(params[:name]).clear
+      Sidekiq::Queue.strategy.new(params[:name]).clear
       redirect "#{root_path}queues"
     end
 
@@ -206,7 +206,7 @@ module Sidekiq
 
     get '/dashboard/stats' do
       sidekiq_stats = Sidekiq::Stats.new
-      queue         = Sidekiq::Queue.new
+      queue         = Sidekiq::Queue.strategy.new
       redis_stats   = redis_info.select{ |k, v| REDIS_KEYS.include? k }
 
       content_type :json

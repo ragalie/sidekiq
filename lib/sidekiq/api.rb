@@ -117,8 +117,12 @@ module Sidekiq
   class Queue
     include Enumerable
 
+    def self.strategy
+      Sidekiq.options[:queue_strategy]
+    end
+
     def self.all
-      Sidekiq.redis {|c| c.smembers('queues') }.sort.map {|q| Sidekiq::Queue.new(q) }
+      Sidekiq.redis {|c| c.smembers('queues') }.sort.map {|q| strategy.new(q) }
     end
 
     def self.retrieve_work(redis_queue_names)
