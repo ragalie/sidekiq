@@ -1,5 +1,6 @@
 require 'securerandom'
 require 'sidekiq/middleware/chain'
+require 'sidekiq/api'
 
 module Sidekiq
   class Client
@@ -178,24 +179,11 @@ module Sidekiq
     def raw_push(payloads)
       @redis_pool.with do |conn|
         conn.multi do
-          atomic_push(conn, payloads)
+          queue = Sidekiq::Queue.new(payloads.first['queue'], conn)
+          queue.push(payloads)
         end
       end
       true
-    end
-
-    def atomic_push(conn, payloads)
-      if payloads.first['at']
-        conn.zadd('schedule', payloads.map do |hash|
-          at = hash.delete('at').to_s
-          [at, Sidekiq.dump_json(hash)]
-        end)
-      else
-        q = payloads.first['queue']
-        to_push = payloads.map { |entry| Sidekiq.dump_json(entry) }
-        conn.sadd('queues', q)
-        conn.lpush("queue:#{q}", to_push)
-      end
     end
 
     def process_single(worker_class, item)

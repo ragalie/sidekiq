@@ -121,15 +121,40 @@ module Sidekiq
       Sidekiq.redis {|c| c.smembers('queues') }.sort.map {|q| Sidekiq::Queue.new(q) }
     end
 
+    def self.retrieve_work(redis_queue_names)
+      Sidekiq.redis { |conn| conn.brpop(*redis_queue_names) }
+    end
+
     attr_reader :name
 
-    def initialize(name="default")
+    def initialize(name="default", conn=nil)
+      @conn = conn
       @name = name
       @rname = "queue:#{name}"
     end
 
+    def push(payloads)
+      with_conn do |conn|
+        if payloads.first['at']
+          conn.zadd('schedule', payloads.map do |hash|
+            at = hash.delete('at').to_s
+            [at, Sidekiq.dump_json(hash)]
+          end)
+        else
+          q = payloads.first['queue']
+          to_push = payloads.map { |entry| Sidekiq.dump_json(entry) }
+          conn.sadd('queues', q)
+          conn.lpush("queue:#{q}", to_push)
+        end
+      end
+    end
+
+    def requeue(messages)
+      with_conn { |conn| conn.rpush(@rname, messages) }
+    end
+
     def size
-      Sidekiq.redis { |con| con.llen(@rname) }
+      with_conn { |con| con.llen(@rname) }
     end
 
     # Sidekiq Pro overrides this
@@ -138,7 +163,7 @@ module Sidekiq
     end
 
     def latency
-      entry = Sidekiq.redis do |conn|
+      entry = with_conn do |conn|
         conn.lrange(@rname, -1, -1)
       end.first
       return 0 unless entry
@@ -154,7 +179,7 @@ module Sidekiq
       loop do
         range_start = page * page_size - deleted_size
         range_end   = page * page_size - deleted_size + (page_size - 1)
-        entries = Sidekiq.redis do |conn|
+        entries = with_conn do |conn|
           conn.lrange @rname, range_start, range_end
         end
         break if entries.empty?
@@ -171,11 +196,19 @@ module Sidekiq
     end
 
     def clear
-      Sidekiq.redis do |conn|
+      with_conn do |conn|
         conn.multi do
           conn.del(@rname)
           conn.srem("queues", name)
         end
+      end
+    end
+
+    def with_conn(&block)
+      if @conn
+        yield @conn
+      else
+        Sidekiq.redis(&block)
       end
     end
     alias_method :💣, :clear
